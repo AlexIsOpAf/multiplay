@@ -1,12 +1,12 @@
 package hub
 
 import (
-	"bufio"
+	"fmt"
 	"log"
 	"net"
 
 	"github.com/cornelk/hashmap"
-	uuid "github.com/nu7hatch/gouuid"
+	"github.com/google/uuid"
 )
 
 /*
@@ -21,6 +21,7 @@ Information/Assumptions surrounding HUB:
 6. No hard limit to clients that can be connected to 1 hub
 7. Assume you can connect external clients to hub i.e postman for test cases
 8. userID => uint64?
+9. No indication of scale hub has to adhere to
 ------------------------------------------------------------------------------
 */
 
@@ -30,9 +31,11 @@ type Hub struct {
 	// Created Server
 	ls net.Listener
 
+	// thread safe hashmap
 	connectedClients *hashmap.HashMap
 
-	// Hub needs to have tunneled access from clients - sockets?
+	// list of clients
+	listOfClients []net.Conn
 }
 
 func ServerConn(port, conn_type string) error {
@@ -43,9 +46,12 @@ func ServerConn(port, conn_type string) error {
 		return err
 	}
 
+	var base []net.Conn
+
 	newHub := &Hub{
 		ls:               lis,
 		connectedClients: &hashmap.HashMap{},
+		listOfClients:    base,
 	}
 
 	// No auth needed: For every connection, accept incoming
@@ -65,41 +71,45 @@ func ServerConn(port, conn_type string) error {
 func (hub *Hub) handleConnection(conn net.Conn) {
 
 	// Assign generated unique ID from external module to conn - don't need to manage my own
-	// generates 16 bytes rather than 8 from uint64
-	u, err := uuid.NewV4()
+	// Can generate UUID and use it's ID to get uint32
+	u, err := uuid.NewUUID()
 
 	if err != nil {
 		log.Fatal(err.Error())
 		return
 	}
 
-	hub.connectedClients.Set(conn.RemoteAddr().String(), u.String())
+	hub.connectedClients.Set(conn.RemoteAddr().String(), u.ID())
+	hub.listOfClients = append(hub.listOfClients, conn)
 
-	for {
-		data, err := bufio.NewReader(conn).ReadString('\n')
+	// for {
+	// 	data, err := bufio.NewReader(conn).ReadString('\n')
 
-		if err != nil {
-			log.Fatal("Error: ", err.Error())
-			return
-		}
+	// 	if err != nil {
+	// 		log.Fatal("Error: ", err.Error())
+	// 		return
+	// 	}
 
-		// "Endpoints"
+	// 	// "Endpoints"
+	// 	if data == "Who Am I?\n" {
+	// 		conn.Write([]byte(hub.ConvertUintToString(u.ID())))
+	// 	}
 
-		if data == "Who\n" {
-			if val, ok := hub.connectedClients.GetStringKey(conn.RemoteAddr().String()); ok {
-				conn.Write([]byte(val.(string)))
-			}
+	// 	if data == "Who is here?\n" {
+	// 		// Iterate through entire list of clients connected
+	// 		for i := 0; i < len(hub.listOfClients); i++ {
+	// 			//
+	// 			if val, ok := hub.connectedClients.GetStringKey(hub.listOfClients[i].RemoteAddr().String()); ok {
+	// 				if val.(uint32) != u.ID() {
+	// 					conn.Write([]byte(hub.ConvertUintToString(val.(uint32))))
+	// 				}
+	// 			}
+	// 		}
+	// 	}
 
-		}
-	}
+	// }
 }
 
-func (hub *Hub) Close() error {
-	err := hub.ls.Close()
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (hub *Hub) ConvertUintToString(val uint32) string {
+	return fmt.Sprint(val)
 }
