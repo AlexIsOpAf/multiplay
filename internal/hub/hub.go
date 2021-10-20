@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"bufio"
 	"log"
 	"net"
 
@@ -72,18 +73,25 @@ func (hub *Hub) handleConnection(conn net.Conn) {
 		return
 	}
 
-	hub.connectedClients.Set(u.String(), conn)
+	hub.connectedClients.Set(conn.RemoteAddr().String(), u.String())
 
-	buf := make([]byte, 1024)
-	// Read the incoming connection into the buffer.
-	_, err = conn.Read(buf)
+	for {
+		data, err := bufio.NewReader(conn).ReadString('\n')
 
-	if err != nil {
-		log.Fatal("Error reading:", err.Error())
-		return
+		if err != nil {
+			log.Fatal("Error: ", err.Error())
+			return
+		}
+
+		// "Endpoints"
+
+		if data == "Who\n" {
+			if val, ok := hub.connectedClients.GetStringKey(conn.RemoteAddr().String()); ok {
+				conn.Write([]byte(val.(string)))
+			}
+
+		}
 	}
-
-	conn.Write([]byte("Message received."))
 }
 
 func (hub *Hub) Close() error {
