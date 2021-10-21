@@ -37,12 +37,11 @@ type Hub struct {
 	connectedClients *hashmap.HashMap
 }
 
-func ServerConn(port, conn_type string) error {
-
+func NewHub(port, conn_type string) (*Hub, error) {
 	lis, err := net.Listen(conn_type, port)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	newHub := &Hub{
@@ -50,21 +49,26 @@ func ServerConn(port, conn_type string) error {
 		connectedClients: &hashmap.HashMap{},
 	}
 
+	return newHub, nil
+}
+
+func (h *Hub) ServerConn() error {
+
 	// No auth needed: For every connection, accept incoming
 	for {
-		conn, err := lis.Accept()
+		conn, err := h.ls.Accept()
 
 		if err != nil {
 			return err
 		}
 
 		// For every accepted incoming, handle in new goroutine
-		go newHub.handleConnection(conn)
+		go h.HandleConnection(conn)
 	}
 }
 
 // For every accepted incoming
-func (hub *Hub) handleConnection(conn net.Conn) {
+func (hub *Hub) HandleConnection(conn net.Conn) {
 
 	// Assign generated unique ID from external module to conn - don't need to manage my own
 	// Can generate UUID and use it's ID to get uint32
@@ -112,6 +116,10 @@ func (hub *Hub) handleConnection(conn net.Conn) {
 		case message.Relay:
 			// Omit error handling as we are only told to deliver the message
 
+			if len(messageContainer.Body) > 1048576 {
+				continue
+			}
+
 			if len(messageContainer.Receivers) < 256 {
 				for _, v := range messageContainer.Receivers {
 					if val, ok := hub.connectedClients.Get(v); ok {
@@ -121,38 +129,6 @@ func (hub *Hub) handleConnection(conn net.Conn) {
 			}
 		}
 	}
-
-	// data, err := bufio.NewReader(conn).ReadString('\n')
-
-	// if err != nil {
-	// 	log.Fatal("Error: ", err.Error())
-	// 	return
-	// }
-
-	// // "Endpoints"
-
-	// if data == "Who Am I?\n" {
-	// 	if val, ok := hub.connectedClients.Get(u.ID()); ok {
-	// 		fmt.Println(val.(net.Conn).RemoteAddr().String())
-	// 	}
-
-	// 	conn.Write([]byte(ConvertUintToString(u.ID())))
-	// }
-
-	// if data == "Who is here?\n" {
-	// 	keyValue := hub.connectedClients.Iter()
-	// 	var clientList []uint32
-
-	// 	for k := range keyValue {
-	// 		id := k.Key.(uint32)
-	// 		if id != u.ID() {
-	// 			clientList = append(clientList, id)
-	// 		}
-	// 	}
-	// 	returnMessage := FormatListMessage(clientList)
-	// 	conn.Write([]byte(returnMessage))
-	// }
-
 }
 
 func FormatListMessage(listOfClients []uint32) string {

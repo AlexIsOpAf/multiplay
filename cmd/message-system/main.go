@@ -12,11 +12,17 @@ const (
 	TYPE = "tcp"
 )
 
-// CLI Arguments to specify how many clients to run for easier testing?
 func main() {
 
 	// Try server startup
-	err := hub.ServerConn(PORT, TYPE)
+	srv, err := hub.NewHub(PORT, TYPE)
+
+	if err != nil {
+		log.Println("Error Building Server Config: ", err.Error())
+		os.Exit(1)
+	}
+
+	err = srv.ServerConn()
 
 	if err != nil {
 		log.Println("Error Starting Server: ", err.Error())
