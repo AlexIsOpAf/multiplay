@@ -1,9 +1,11 @@
 package hub
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net"
+	"strings"
 
 	"github.com/cornelk/hashmap"
 	"github.com/google/uuid"
@@ -33,9 +35,6 @@ type Hub struct {
 
 	// thread safe hashmap
 	connectedClients *hashmap.HashMap
-
-	// list of clients
-	listOfClients []net.Conn
 }
 
 func ServerConn(port, conn_type string) error {
@@ -46,12 +45,9 @@ func ServerConn(port, conn_type string) error {
 		return err
 	}
 
-	var base []net.Conn
-
 	newHub := &Hub{
 		ls:               lis,
 		connectedClients: &hashmap.HashMap{},
-		listOfClients:    base,
 	}
 
 	// No auth needed: For every connection, accept incoming
@@ -67,7 +63,7 @@ func ServerConn(port, conn_type string) error {
 	}
 }
 
-// For every accepted incoming, allocate
+// For every accepted incoming
 func (hub *Hub) handleConnection(conn net.Conn) {
 
 	// Assign generated unique ID from external module to conn - don't need to manage my own
@@ -79,37 +75,58 @@ func (hub *Hub) handleConnection(conn net.Conn) {
 		return
 	}
 
-	hub.connectedClients.Set(conn.RemoteAddr().String(), u.ID())
-	hub.listOfClients = append(hub.listOfClients, conn)
+	// set uuid's ID to the current client connection being handled
+	hub.connectedClients.Set(u.ID(), conn)
 
-	// for {
-	// 	data, err := bufio.NewReader(conn).ReadString('\n')
+	// Main conn process loop
 
-	// 	if err != nil {
-	// 		log.Fatal("Error: ", err.Error())
-	// 		return
-	// 	}
+	for {
+		data, err := bufio.NewReader(conn).ReadString('\n')
 
-	// 	// "Endpoints"
-	// 	if data == "Who Am I?\n" {
-	// 		conn.Write([]byte(hub.ConvertUintToString(u.ID())))
-	// 	}
+		if err != nil {
+			log.Fatal("Error: ", err.Error())
+			return
+		}
 
-	// 	if data == "Who is here?\n" {
-	// 		// Iterate through entire list of clients connected
-	// 		for i := 0; i < len(hub.listOfClients); i++ {
-	// 			//
-	// 			if val, ok := hub.connectedClients.GetStringKey(hub.listOfClients[i].RemoteAddr().String()); ok {
-	// 				if val.(uint32) != u.ID() {
-	// 					conn.Write([]byte(hub.ConvertUintToString(val.(uint32))))
-	// 				}
-	// 			}
-	// 		}
-	// 	}
+		// "Endpoints"
+		if data == "Who Am I?\n" {
+			if val, ok := hub.connectedClients.Get(u.ID()); ok {
+				fmt.Println(val.(net.Conn).RemoteAddr().String())
+			}
 
-	// }
+			conn.Write([]byte(ConvertUintToString(u.ID())))
+		}
+
+		if data == "Who is here?\n" {
+			keyValue := hub.connectedClients.Iter()
+			var clientList []uint32
+
+			for k := range keyValue {
+				id := k.Key.(uint32)
+				if id != u.ID() {
+					clientList = append(clientList, id)
+				}
+			}
+			returnMessage := FormatListMessage(clientList)
+			conn.Write([]byte(returnMessage))
+		}
+	}
 }
 
-func (hub *Hub) ConvertUintToString(val uint32) string {
+func FormatListMessage(listOfClients []uint32) string {
+
+	var builder strings.Builder
+
+	// Title
+	builder.WriteString("Connected Clients:\n")
+
+	for _, v := range listOfClients {
+		fmt.Fprintf(&builder, ConvertUintToString(v)+"\n")
+	}
+
+	return builder.String()
+}
+
+func ConvertUintToString(val uint32) string {
 	return fmt.Sprint(val)
 }
