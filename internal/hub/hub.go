@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"net"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/cornelk/hashmap"
 	"github.com/google/uuid"
+	"github.com/multiplay/internal/message"
 )
 
 /*
@@ -81,23 +81,22 @@ func (hub *Hub) handleConnection(conn net.Conn) {
 	// Main conn process loop
 
 	for {
-		data, err := bufio.NewReader(conn).ReadString('\n')
+
+		var messageContainer message.Message
+
+		err := messageContainer.DecodeIncomingMessage(conn)
 
 		if err != nil {
 			log.Fatal("Error: ", err.Error())
 			return
 		}
 
-		// "Endpoints"
-		if data == "Who Am I?\n" {
-			if val, ok := hub.connectedClients.Get(u.ID()); ok {
-				fmt.Println(val.(net.Conn).RemoteAddr().String())
-			}
+		switch messageContainer.Action {
 
+		case message.Identity:
 			conn.Write([]byte(ConvertUintToString(u.ID())))
-		}
 
-		if data == "Who is here?\n" {
+		case message.List:
 			keyValue := hub.connectedClients.Iter()
 			var clientList []uint32
 
@@ -109,8 +108,51 @@ func (hub *Hub) handleConnection(conn net.Conn) {
 			}
 			returnMessage := FormatListMessage(clientList)
 			conn.Write([]byte(returnMessage))
+
+		case message.Relay:
+			// Omit error handling as we are only told to deliver the message
+
+			if len(messageContainer.Receivers) < 256 {
+				for _, v := range messageContainer.Receivers {
+					if val, ok := hub.connectedClients.Get(v); ok {
+						val.(net.Conn).Write([]byte(messageContainer.Body))
+					}
+				}
+			}
 		}
 	}
+
+	// data, err := bufio.NewReader(conn).ReadString('\n')
+
+	// if err != nil {
+	// 	log.Fatal("Error: ", err.Error())
+	// 	return
+	// }
+
+	// // "Endpoints"
+
+	// if data == "Who Am I?\n" {
+	// 	if val, ok := hub.connectedClients.Get(u.ID()); ok {
+	// 		fmt.Println(val.(net.Conn).RemoteAddr().String())
+	// 	}
+
+	// 	conn.Write([]byte(ConvertUintToString(u.ID())))
+	// }
+
+	// if data == "Who is here?\n" {
+	// 	keyValue := hub.connectedClients.Iter()
+	// 	var clientList []uint32
+
+	// 	for k := range keyValue {
+	// 		id := k.Key.(uint32)
+	// 		if id != u.ID() {
+	// 			clientList = append(clientList, id)
+	// 		}
+	// 	}
+	// 	returnMessage := FormatListMessage(clientList)
+	// 	conn.Write([]byte(returnMessage))
+	// }
+
 }
 
 func FormatListMessage(listOfClients []uint32) string {
